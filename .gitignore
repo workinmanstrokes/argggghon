@@ -1,0 +1,5 @@
+node_modules/
+.argon-data/
+.argon-backups/
+*.log
+.DS_Store

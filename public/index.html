@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Argon — Local Workspace</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Argon</div>
+  <div class="project" id="projectRoot">Loading project…</div>
+  <div class="top-actions">
+    <button id="newSessionBtn" title="Start a new chat session">+ New session</button>
+    <button id="settingsBtn" title="Ollama host, model, and project root">Settings</button>
+  </div>
+</header>
+
+<div id="settingsPanel" class="settings-panel" hidden>
+  <label>Ollama host <input id="ollamaHost" type="text"></label>
+  <label>Ollama model <input id="ollamaModel" type="text"></label>
+  <label>Project root <input id="projectRootInput" type="text"></label>
+  <button id="saveSettingsBtn">Save settings</button>
+  <span id="settingsStatus"></span>
+</div>
+
+<main class="workspace">
+  <aside class="file-tree">
+    <div class="pane-title">Files</div>
+    <div class="sessions">
+      <div class="pane-title">Chat sessions</div>
+      <ul id="sessionList"></ul>
+    </div>
+    <ul id="tree"></ul>
+    <div class="context">
+      <div class="pane-title">Context for Argon</div>
+      <div id="contextList" class="context-list">No files selected. Click a file, then “+ context”, or mention it with @path in chat.</div>
+    </div>
+  </aside>
+
+  <section class="editor-pane">
+    <div class="editor-bar">
+      <span id="currentFile">No file open</span>
+      <button id="addContextBtn" disabled>+ Add to context</button>
+      <button id="saveBtn" disabled>Save</button>
+      <span id="saveStatus"></span>
+    </div>
+    <textarea id="editor" placeholder="Open a file from the tree to edit it here." spellcheck="false"></textarea>
+    <div id="diffPanel" class="diff-panel" hidden>
+      <div class="pane-title">Proposed edit — <span id="diffFile"></span></div>
+      <pre id="diffView"></pre>
+      <div class="diff-actions">
+        <button id="approveBtn">Approve &amp; apply</button>
+        <button id="rejectBtn">Reject</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="chat-pane">
+    <div class="pane-title">Argon chat</div>
+    <div id="chatLog" class="chat-log"></div>
+    <div class="chat-input">
+      <input id="chatInput" type="text" placeholder="Ask Argon… mention files with @path/to/file" autocomplete="off">
+      <button id="sendBtn">Send</button>
+    </div>
+    <p class="hint">Argon only proposes edits. Nothing is written until you approve a diff, and a backup is made first.</p>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

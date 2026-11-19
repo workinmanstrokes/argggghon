@@ -1,0 +1,1 @@
+{"dependencies":{"express":"^4.19.2"},"description":"A local Claude Code-style workspace where Argon edits your project files.","license":"MIT","main":"server.js","name":"argon","scripts":{"start":"node server.js"},"version":"0.1.0"}
