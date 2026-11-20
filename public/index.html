@@ -16,6 +16,14 @@
   </div>
 </header>
 
+<div id="statusBar" class="status-bar">
+  <span id="statusServer">Server: checking…</span>
+  <span id="statusOllama">Ollama: checking…</span>
+  <span id="statusModel">Model: —</span>
+  <span id="statusLatency">Latency: —</span>
+  <span id="statusRam">RAM: —</span>
+</div>
+
 <div id="settingsPanel" class="settings-panel" hidden>
   <label>Ollama host <input id="ollamaHost" type="text"></label>
   <label>Ollama model <input id="ollamaModel" type="text"></label>
@@ -35,6 +43,10 @@
     <div class="context">
       <div class="pane-title">Context for Argon</div>
       <div id="contextList" class="context-list">No files selected. Click a file, then “+ context”, or mention it with @path in chat.</div>
+    </div>
+    <div class="backups">
+      <div class="pane-title">Backups — restore a file</div>
+      <ul id="backupList" class="backup-list"></ul>
     </div>
   </aside>
 

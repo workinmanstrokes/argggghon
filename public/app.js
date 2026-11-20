@@ -54,6 +54,7 @@ $('saveBtn').onclick = async () => {
   });
   currentContent = $('editor').value;
   $('saveStatus').textContent = 'Saved (backup made).';
+  loadBackups();
 };
 
 $('addContextBtn').onclick = () => {
@@ -153,6 +154,7 @@ $('approveBtn').onclick = async () => {
   addMessage('assistant', `Applied edit to ${pendingProposal.path} (backup saved).`);
   $('diffPanel').hidden = true;
   pendingProposal = null;
+  loadBackups();
   if (currentFile) openFile(currentFile);
 };
 
@@ -230,6 +232,76 @@ async function loadSettings() {
   $('projectRootInput').value = s.projectRoot;
 }
 
+// --- health status bar ---------------------------------------------------
+// Polls GET /api/health so the top of the workspace always shows the plain
+// facts: is the server up, can it reach Ollama, is the model pulled, how
+// slow is Ollama, and how much RAM Argon is using. When Ollama is down the
+// bar says so instead of letting chat fail silently later.
+async function loadHealth() {
+  try {
+    const h = await api('/api/health');
+    $('statusServer').textContent = `Server: running (port ${h.port}, up ${h.uptimeSeconds}s)`;
+    $('statusServer').className = 'ok';
+    $('statusOllama').textContent = h.ollama.reachable
+      ? `Ollama: reachable (${h.ollama.latencyMs} ms)`
+      : `Ollama: unreachable — ${h.ollama.error || 'start Ollama, then restart Argon'}`;
+    $('statusOllama').className = h.ollama.reachable ? 'ok' : 'bad';
+    $('statusModel').textContent = `Model: ${h.ollamaModel}${h.ollama.modelPresent ? '' : ' (not pulled — run ollama pull ' + h.ollamaModel + ')'}`;
+    $('statusModel').className = h.ollama.modelPresent ? 'ok' : 'bad';
+    $('statusLatency').textContent = `Ollama latency: ${h.ollama.latencyMs} ms`;
+    $('statusRam').textContent = `RAM: Argon ${h.memory.processRssMB} MB / system free ${h.memory.systemFreeMB} MB`;
+  } catch (err) {
+    $('statusServer').textContent = 'Server: no response — is Argon running?';
+    $('statusServer').className = 'bad';
+    $('statusOllama').textContent = 'Ollama: unknown';
+    $('statusOllama').className = '';
+    $('statusModel').textContent = 'Model: —';
+    $('statusLatency').textContent = 'Latency: —';
+    $('statusRam').textContent = 'RAM: —';
+  }
+}
+
+// --- backups / restore ---------------------------------------------------
+// Lists the safety snapshots in .argon-backups/ with a one-click Restore
+// button each, so the "break something, then restore it" proof can be done
+// from the UI instead of the command line.
+async function loadBackups() {
+  try {
+    const { backups } = await api('/api/backups');
+    const list = $('backupList');
+    list.innerHTML = '';
+    if (!backups.length) {
+      const li = document.createElement('li');
+      li.className = 'muted';
+      li.textContent = 'No backups yet. A backup is made before every applied edit.';
+      list.appendChild(li);
+      return;
+    }
+    for (const b of backups.slice(0, 20)) {
+      const li = document.createElement('li');
+      li.textContent = b + ' ';
+      const btn = document.createElement('button');
+      btn.textContent = 'Restore';
+      btn.className = 'restore-btn';
+      btn.onclick = async () => {
+        await api('/api/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ backup: b }),
+        });
+        addMessage('assistant', `Restored from backup ${b}.`);
+        loadBackups();
+        if (currentFile) openFile(currentFile);
+      };
+      li.appendChild(btn);
+      list.appendChild(li);
+    }
+  } catch { /* the backups panel is best-effort; a failed list is not fatal */ }
+}
+
 loadSettings();
 loadTree();
 loadSessions();
+loadHealth();
+setInterval(loadHealth, 10000);
+loadBackups();

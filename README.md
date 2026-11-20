@@ -11,6 +11,11 @@ made before every applied edit.
 The first version runs entirely locally using [Ollama](https://ollama.com),
 with no cloud API key required.
 
+> Name note: this Argon is a local coding workspace. It is not affiliated
+> with any retro-gaming product called Argon — the shared name makes this
+> build hard to find in search, so say "Argon local coding workspace" when
+> pointing people at it.
+
 ## Features
 
 - Open a local project folder and browse it in a file tree, sandboxed to that project root
@@ -22,6 +27,8 @@ with no cloud API key required.
 - Automatic backup of a file before an approved edit is applied, with restore
 - Persistent chat sessions per project, so work can be resumed later
 - Settings for Ollama host, model, and project root
+- Status bar showing server, Ollama, model, latency, and RAM, polled live from `GET /api/health`
+- Backups panel listing safety snapshots with one-click restore
 
 ## Requirements
 
@@ -43,10 +50,86 @@ Then open http://localhost:3000 in your browser.
 
 | Setting | Default | Override |
 | --- | --- | --- |
-| Port | `3000` | `PORT` env var |
+| Port | `3000` | `PORT` env var (the v0.11 tester setup used `8080` — see `STARTUP.md`) |
 | Project root | current directory | `ARGON_PROJECT_ROOT` env var, or Settings in the UI |
 | Ollama host | `http://localhost:11434` | `OLLAMA_HOST` env var, or Settings in the UI |
 | Ollama model | `qwen2.5-coder:7b` | `OLLAMA_MODEL` env var, or Settings in the UI |
+
+## Startup on the HP laptop (Windows)
+
+See `STARTUP.md` for the exact startup steps, the port-8080 conflict, and
+the error table. The short version:
+
+```bash
+npm run doctor   # every check must say PASS before anything else
+npm start
+```
+
+`npm run doctor` checks Node, the dependencies, whether the port is free
+or already answering as Argon, whether Ollama answers, and whether the
+model is pulled — with a plain-language fix for each failure. The server
+also prints the Ollama status at startup and a plain-language fix if its
+port is already taken, and `GET /api/health` reports server uptime, RAM,
+and a live Ollama probe at any time.
+
+**Status (2026-11-20):** Argon was not running on the laptop and port 8080
+did not respond when the Game Test Lab tested it. The startup steps above
+have not been run on the laptop yet — the first successful run must be
+recorded in a proof log, not claimed from memory.
+
+## Proof runs (Game Test Lab findings)
+
+The Lab scored the build 4/10: a well-structured builder on paper that had
+not proven it could build anything on its target laptop. The proof loop is
+defined in `docs/v0.11-release-criteria.md` and the proof app in
+`docs/zombie-shootout-proof.md`:
+
+```bash
+npm run proof          # prompt -> plan -> build -> run -> playtest report (Zombie shootout)
+npm run snapshot-test  # break a file, restore from the safety snapshot, verify
+```
+
+`npm run proof` writes a proof log to `proof-runs/` with per-check
+pass/fail, time taken, RAM, token counts, and fix attempts used (0–3). The
+playtest step is manual and recorded as such — the script does not fake it.
+v0.11 is done when the Windows 7–8B loop passes **twice in a row**; see the
+release criteria for the full gate.
+
+## Workspace UI
+
+- **Top bar:** project root, new session, Settings.
+- **Status bar** (under the top bar): server, Ollama, model, latency, and
+  RAM — green means it works, red names the problem. Refreshed every
+  10 seconds from `GET /api/health`.
+- **Left pane:** file tree, chat sessions list, context files for Argon,
+  and the Backups panel (safety snapshots with one-click Restore).
+- **Middle pane:** code editor with save, and the diff review panel for a
+  proposed edit (Approve & apply / Reject).
+- **Right pane:** Argon chat, with `@path/to/file` mentions and the hint
+  that nothing is written until an edit is approved.
+- **Errors in the UI:** chat failures show the error in the chat log
+  (for example, when Ollama is down); the status bar shows Ollama and model
+  problems before chat is even tried.
+
+## Performance numbers
+
+There were no performance numbers at all before this update. Now:
+
+- `GET /api/health` returns Argon process RAM, system free/total RAM,
+  uptime, and a live Ollama latency probe.
+- `POST /api/chat` returns `usage` (`promptTokens`, `responseTokens`,
+  `totalMs`) from Ollama alongside the reply.
+- Proof logs record time per step, RAM before/after, token counts, and fix
+  attempts, so build success rate and fix-it success rate can be counted
+  from the logs across runs.
+
+## Scope freeze
+
+Scope is frozen until the Windows 7–8B loop passes twice in a row — see
+`SCOPE-FREEZE.md`. Parked: the phone fallback (small on-device models
+cannot substitute as proof for the PC 7–8B workflow), the 14B trial, and
+agent roles / multi-step autonomy. In scope only: the startup fix, the
+proof loop, the snapshot-restore proof, and the health/status visibility.
 
 ## Safety
 
@@ -68,6 +151,8 @@ Then open http://localhost:3000 in your browser.
    the middle, Argon chat on the right.
 3. Chat history is stored per project under `.argon-data/` so sessions can be
    resumed later. That folder (and `.argon-backups/`) is git-ignored.
+4. `GET /api/health` probes Ollama live and reports server uptime, RAM, and
+   model status for the status bar, `npm run doctor`, and proof runs.
 
 ## Build milestones
 

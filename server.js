@@ -3,6 +3,7 @@
 // written without an explicit approve, and a backup is made before each edit.
 const express = require('express');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
@@ -18,6 +19,7 @@ const settings = {
 const DATA_DIR = path.join(settings.projectRoot, '.argon-data');
 const BACKUP_DIR = path.join(settings.projectRoot, '.argon-backups');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const STARTED_AT = Date.now();
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -138,6 +140,56 @@ app.post('/api/settings', (req, res) => {
   res.json(settings);
 });
 
+// --- health --------------------------------------------------------------
+// GET /api/health — the single place that answers "is Argon actually running
+// and can it reach Ollama?". Used by the status bar in the UI, by
+// `npm run doctor`, and by the proof-run script. It reports plain facts:
+// server uptime, RAM (this process and the machine), and a live Ollama probe
+// (reachable? how slow? is the configured model pulled?).
+async function probeOllama() {
+  const started = Date.now();
+  try {
+    const res = await fetch(`${settings.ollamaHost}/api/tags`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) {
+      return { reachable: false, latencyMs: Date.now() - started, modelPresent: false, error: `Ollama answered HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    const models = (data.models || []).map((m) => m.name);
+    return {
+      reachable: true,
+      latencyMs: Date.now() - started,
+      modelPresent: models.some((name) => name === settings.ollamaModel || name.startsWith(settings.ollamaModel + ':')),
+      models,
+      error: null,
+    };
+  } catch (err) {
+    return { reachable: false, latencyMs: Date.now() - started, modelPresent: false, error: err.message };
+  }
+}
+
+app.get('/api/health', async (req, res) => {
+  const mem = process.memoryUsage();
+  const ollama = await probeOllama();
+  res.json({
+    ok: true,
+    server: 'argon',
+    port: PORT,
+    projectRoot: settings.projectRoot,
+    ollamaHost: settings.ollamaHost,
+    ollamaModel: settings.ollamaModel,
+    uptimeSeconds: Math.round((Date.now() - STARTED_AT) / 1000),
+    memory: {
+      processRssMB: Math.round(mem.rss / 1024 / 1024),
+      processHeapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+      systemFreeMB: Math.round(os.freemem() / 1024 / 1024),
+      systemTotalMB: Math.round(os.totalmem() / 1024 / 1024),
+    },
+    ollama,
+  });
+});
+
 // --- chat sessions -------------------------------------------------------
 app.get('/api/sessions', (req, res) => res.json({ sessions: loadSessions() }));
 app.post('/api/sessions', (req, res) => {
@@ -195,6 +247,13 @@ app.post('/api/chat', async (req, res) => {
     }
     const data = await ollamaRes.json();
     const reply = data.response || '';
+    // Usage numbers come straight from Ollama's response so proof runs can
+    // record real token counts and timings instead of guessing them.
+    const usage = {
+      promptTokens: data.prompt_eval_count ?? null,
+      responseTokens: data.eval_count ?? null,
+      totalMs: data.total_duration ? Math.round(data.total_duration / 1e6) : null,
+    };
     if (sessionId) {
       const sessions = loadSessions();
       const session = sessions.find((s) => s.id === sessionId);
@@ -203,14 +262,36 @@ app.post('/api/chat', async (req, res) => {
         saveSessions(sessions);
       }
     }
-    res.json({ reply });
+    res.json({ reply, usage });
   } catch (err) {
     res.status(502).json({ error: `Could not reach Ollama at ${settings.ollamaHost}: ${err.message}` });
   }
 });
 
-app.listen(PORT, '127.0.0.1', () => {
+const server = app.listen(PORT, '127.0.0.1', async () => {
   console.log(`Argon running at http://localhost:${PORT}`);
   console.log(`Project root: ${settings.projectRoot}`);
   console.log(`Ollama: ${settings.ollamaHost} model ${settings.ollamaModel}`);
+  const ollama = await probeOllama();
+  if (ollama.reachable) {
+    console.log(`Ollama reachable (${ollama.latencyMs} ms). Model ${settings.ollamaModel} ${ollama.modelPresent ? 'is pulled.' : 'is NOT pulled — run: ollama pull ' + settings.ollamaModel}`);
+  } else {
+    console.log(`Ollama NOT reachable at ${settings.ollamaHost}: ${ollama.error}`);
+    console.log('Start Ollama first (run `ollama serve`), then restart Argon. Chat will return an error until Ollama responds.');
+  }
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
+});
+
+// A port that is already taken used to fail with a bare Node stack trace.
+// Say plainly what happened and how to fix it, then stop.
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use — Argon cannot start.`);
+    console.error(`On Windows, find what holds it with: netstat -ano | findstr :${PORT}`);
+    console.error('Stop that program (on this laptop the old Diddler Dev Hub has held port 8080),');
+    console.error('or start Argon on another port with: set PORT=3001 && npm start');
+    process.exit(1);
+  }
+  console.error('Argon failed to start:', err.message);
+  process.exit(1);
 });
